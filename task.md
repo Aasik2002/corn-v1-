@@ -1,0 +1,31 @@
+# Tasks - CornAI Frontend Implementation
+
+- [x] Phase 1: Git Workflow & Project Initialization
+  - [x] Clear conflicting files in frontend directory
+  - [x] Run Vite project creation
+  - [x] Initialize git, commit, and checkout development branch
+- [x] Phase 2: Dependency Installation
+  - [x] Install react-router-dom, lucide-react, recharts, axios
+  - [x] Install tailwindcss and @tailwindcss/vite
+- [x] Phase 3: Configuration & Styles Setup
+  - [x] Configure `vite.config.js` with React and Tailwind plugins
+  - [x] Configure `src/index.css` with Tailwind v4 imports and custom dark mint variables
+  - [x] Update `src/main.jsx` and clear unused default templates
+- [x] Phase 4: API Services Integration
+  - [x] Create Axios instance `api.js` for Express backend
+  - [x] Create Axios instance `mlApi.js` for FastAPI backend
+  - [x] Create `AuthContext.jsx` for shared auth state
+- [x] Phase 5: UI Components & Layout
+  - [x] Create shared components (`Navbar.jsx`, `ProtectedRoute.jsx`)
+- [x] Phase 6: Pages Implementation
+  - [x] Create `Login.jsx` with glassmorphic layout and corn plant background vector
+  - [x] Create `Register.jsx` with farmer in cornfield background
+  - [x] Create `Dashboard.jsx` (Field Overview, charts, metrics, Safe Zone card)
+  - [x] Create `NewScan.jsx` (drag-and-drop file upload, custom camera capture option, and the integrated Scanning HUD overlay with animations)
+  - [x] Create `ScanHistory.jsx` (modern scan logs table with status badges)
+  - [x] Create `Profile.jsx` (profile edit form, save changes, and logout)
+- [x] Phase 7: Backend Adjustments
+  - [x] Add update profile endpoint in `authController.js` and `authRoutes.js`
+- [x] Phase 8: Verification & Walkthrough
+  - [x] Verify build via `npm run build`
+  - [x] Run tests and create `walkthrough.md`
