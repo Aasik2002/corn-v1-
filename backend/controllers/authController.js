@@ -33,6 +33,7 @@ const registerUser = async (req, res) => {
                 _id: user.id,
                 fullName: user.fullName,
                 email: user.email,
+                profileImage: user.profileImage,
                 message: 'User registered successfully!'
             });
         } else {
@@ -42,8 +43,6 @@ const registerUser = async (req, res) => {
         res.status(500).json({ message: 'Server Error', error: error.message });
     }
 };
-
-module.exports = { registerUser };
 
 // @desc    Authenticate a user & get token
 // @route   POST /api/auth/login
@@ -67,6 +66,7 @@ const loginUser = async (req, res) => {
                 _id: user.id,
                 fullName: user.fullName,
                 email: user.email,
+                profileImage: user.profileImage, // Added Profile Image
                 token: token,
                 message: 'Login successful!'
             });
@@ -107,18 +107,50 @@ const updateUserProfile = async (req, res) => {
             user.email = req.body.email || user.email;
             user.phoneNumber = req.body.phoneNumber ?? user.phoneNumber;
             user.organization = req.body.organization ?? user.organization;
+            
             if (req.body.password) {
                 const salt = await bcrypt.genSalt(10);
                 user.password = await bcrypt.hash(req.body.password, salt);
             }
+            
             const updatedUser = await user.save();
+            
             res.status(200).json({
                 _id: updatedUser._id,
                 fullName: updatedUser.fullName,
                 email: updatedUser.email,
                 phoneNumber: updatedUser.phoneNumber,
                 organization: updatedUser.organization,
+                profileImage: updatedUser.profileImage, // Added Profile Image
                 message: 'Profile updated successfully!'
+            });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error', error: error.message });
+    }
+};
+
+// @desc    Upload or update profile image
+// @route   POST /api/auth/profile/image
+// @access  Private
+const uploadProfileImage = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'No image file provided' });
+        }
+
+        const user = await User.findById(req.user.id);
+        
+        if (user) {
+            // Save the path of the uploaded image to the user's database record
+            user.profileImage = req.file.path; 
+            const updatedUser = await user.save();
+
+            res.status(200).json({
+                message: 'Profile image uploaded successfully!',
+                profileImage: updatedUser.profileImage
             });
         } else {
             res.status(404).json({ message: 'User not found' });
@@ -193,4 +225,12 @@ const resetPassword = async (req, res) => {
     }
 };
 
-module.exports = { registerUser, loginUser, getUserProfile, updateUserProfile, forgotPassword, resetPassword };
+module.exports = { 
+    registerUser, 
+    loginUser, 
+    getUserProfile, 
+    updateUserProfile, 
+    uploadProfileImage, // Exported the new image upload controller
+    forgotPassword, 
+    resetPassword 
+};

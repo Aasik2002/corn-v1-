@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios'; 
 import { useAuth } from '../context/AuthContext';
-import { User, Mail, Phone, Building, Save, LogOut, Camera, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Mail, Phone, Building, Save, LogOut, Camera, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 const Profile = () => {
   const { user, updateProfile, logout } = useAuth();
@@ -9,8 +10,11 @@ const Profile = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [organization, setOrganization] = useState('');
   const [loading, setLoading] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false); 
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  
+  const fileInputRef = useRef(null); 
 
   // Hydrate fields from context user state
   useEffect(() => {
@@ -22,6 +26,7 @@ const Profile = () => {
     }
   }, [user]);
 
+  // Handle Profile Details Update
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg('');
@@ -50,6 +55,51 @@ const Profile = () => {
     }
   };
 
+  // Handle Profile Image Upload
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    setImageUploading(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try { 
+      let token = user?.token;
+      if (!token) {
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        token = storedUser?.token || localStorage.getItem('token');
+      }
+
+      if (!token) {
+        setErrorMsg('Authentication error: Token not found. Please log in again.');
+        setImageUploading(false);
+        return;
+      }
+
+      
+      const response = await axios.post('http://localhost:4000/api/auth/profile/image', formData, {
+        headers: {
+          Authorization: `Bearer ${token}` 
+        }
+      });
+      
+      setSuccessMsg('Profile image updated successfully! Please refresh to see changes.');
+      
+      
+      setTimeout(() => window.location.reload(), 1500);
+
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.response?.data?.message || 'Image upload failed. 401 Unauthorized.');
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 pb-12">
       
@@ -73,7 +123,15 @@ const Profile = () => {
             {/* Avatar Circle Container */}
             <div className="relative group w-28 h-28 mx-auto">
               <div className="w-full h-full rounded-full bg-emerald-950/40 border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden transition-all group-hover:border-emerald-400">
-                {fullName ? (
+                {imageUploading ? (
+                  <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
+                ) : user?.profileImage ? (
+                  <img 
+                    src={`http://localhost:4000/${user.profileImage.replace(/\\/g, '/')}`} 
+                    alt="Profile" 
+                    className="w-full h-full object-cover"
+                  />
+                ) : fullName ? (
                   <span className="text-emerald-400 font-extrabold text-4xl select-none">
                     {fullName.charAt(0).toUpperCase()}
                   </span>
@@ -82,10 +140,21 @@ const Profile = () => {
                 )}
               </div>
               
+              {/* Hidden File Input */}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageUpload} 
+                accept="image/*" 
+                className="hidden" 
+              />
+
               {/* Edit Icon Overlay */}
               <button 
                 type="button" 
-                className="absolute bottom-1 right-1 p-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg cursor-pointer transition-colors active:scale-95"
+                onClick={() => fileInputRef.current.click()} // பட்டனை க்ளிக் செய்தால் input open ஆகும்
+                disabled={imageUploading}
+                className="absolute bottom-1 right-1 p-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg cursor-pointer transition-colors active:scale-95 disabled:opacity-50"
                 title="Change Avatar"
               >
                 <Camera className="w-3.5 h-3.5" />
