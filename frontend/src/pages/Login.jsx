@@ -25,7 +25,7 @@ const Login = () => {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/');
+      navigate('/new-scan');
     } catch (err) {
       // Errors are handled inside Context and exposed via authError
       console.error(err);

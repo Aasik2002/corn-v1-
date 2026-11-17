@@ -39,7 +39,7 @@ const Register = () => {
     setLoading(true);
     try {
       await register(fullName, email, password, phoneNumber, organization);
-      navigate('/');
+      navigate('/new-scan');
     } catch (err) {
       console.error(err);
     } finally {
