@@ -48,6 +48,15 @@ export const authService = {
     return response.data;
   },
 
+  uploadProfileImage: async (formData) => {
+    const response = await api.post('/auth/profile/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   forgotPassword: async (email) => {
     const response = await api.post('/auth/forgot-password', { email });
     return response.data;

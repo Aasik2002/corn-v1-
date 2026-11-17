@@ -2,6 +2,19 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+// Helper to ensure web-friendly relative path (e.g. 'uploads/filename.jpg')
+const normalizeProfileImagePath = (rawPath) => {
+    if (!rawPath) return '';
+    if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath;
+    const normalized = rawPath.replace(/\\/g, '/');
+    const idx = normalized.indexOf('uploads/');
+    if (idx !== -1) {
+        return normalized.slice(idx);
+    }
+    const filename = normalized.split('/').pop();
+    return `uploads/${filename}`;
+};
+
 // @desc    Register a new user
 // @route   POST /api/auth/register
 const registerUser = async (req, res) => {
@@ -66,7 +79,9 @@ const loginUser = async (req, res) => {
                 _id: user.id,
                 fullName: user.fullName,
                 email: user.email,
-                profileImage: user.profileImage, // Added Profile Image
+                phoneNumber: user.phoneNumber || '',
+                organization: user.organization || '',
+                profileImage: normalizeProfileImagePath(user.profileImage),
                 token: token,
                 message: 'Login successful!'
             });
@@ -87,7 +102,9 @@ const getUserProfile = async (req, res) => {
         const user = await User.findById(req.user.id).select('-password');
         
         if (user) {
-            res.status(200).json(user);
+            const userObj = user.toObject();
+            userObj.profileImage = normalizeProfileImagePath(userObj.profileImage);
+            res.status(200).json(userObj);
         } else {
             res.status(404).json({ message: 'User not found' });
         }
@@ -121,7 +138,7 @@ const updateUserProfile = async (req, res) => {
                 email: updatedUser.email,
                 phoneNumber: updatedUser.phoneNumber,
                 organization: updatedUser.organization,
-                profileImage: updatedUser.profileImage, // Added Profile Image
+                profileImage: normalizeProfileImagePath(updatedUser.profileImage),
                 message: 'Profile updated successfully!'
             });
         } else {
@@ -144,13 +161,14 @@ const uploadProfileImage = async (req, res) => {
         const user = await User.findById(req.user.id);
         
         if (user) {
-            // Save the path of the uploaded image to the user's database record
-            user.profileImage = req.file.path; 
+            // Save the relative web path: uploads/<filename>
+            const relativePath = `uploads/${req.file.filename}`;
+            user.profileImage = relativePath; 
             const updatedUser = await user.save();
 
             res.status(200).json({
                 message: 'Profile image uploaded successfully!',
-                profileImage: updatedUser.profileImage
+                profileImage: relativePath
             });
         } else {
             res.status(404).json({ message: 'User not found' });

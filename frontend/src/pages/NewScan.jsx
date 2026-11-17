@@ -115,14 +115,16 @@ const NewScan = () => {
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setErrorMsg('');
+    startAnalysis(file);
   };
 
   const triggerFileSelect = () => {
     fileInputRef.current.click();
   };
 
-  const startAnalysis = async () => {
-    if (!selectedFile) {
+  const startAnalysis = async (fileToAnalyze) => {
+    const file = (fileToAnalyze instanceof File) ? fileToAnalyze : selectedFile;
+    if (!file) {
       setErrorMsg('Please select or upload a leaf photograph first.');
       return;
     }
@@ -135,7 +137,7 @@ const NewScan = () => {
     try {
       // 1. We upload and analyze the leaf on the Node.js backend.
       // This automatically triggers the FastAPI ML model internally AND saves to database history!
-      const apiResponse = await scanService.uploadAndAnalyze(selectedFile);
+      const apiResponse = await scanService.uploadAndAnalyze(file);
       const resultObj = apiResponse.result;
 
       // Class mappings details
@@ -183,7 +185,7 @@ const NewScan = () => {
       
       // Fallback: Connect to Python FastAPI directly if Express backend is down
       try {
-        const mlResponse = await mlService.predictLeaf(selectedFile);
+        const mlResponse = await mlService.predictLeaf(file);
         const disease = mlResponse.disease;
         const confidence = mlResponse.confidence;
 

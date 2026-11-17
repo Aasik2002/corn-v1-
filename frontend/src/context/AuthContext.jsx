@@ -4,7 +4,14 @@ import { authService } from '../services/api';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cornai_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [token, setToken] = useState(localStorage.getItem('cornai_token'));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -16,6 +23,7 @@ export const AuthProvider = ({ children }) => {
         try {
           const userData = await authService.getProfile();
           setUser(userData);
+          localStorage.setItem('cornai_user', JSON.stringify(userData));
         } catch (err) {
           console.error('Failed to load user profile:', err);
           logout();
@@ -32,13 +40,16 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await authService.login(email, password);
       setToken(data.token);
-      setUser({
+      const userPayload = {
         _id: data._id,
         fullName: data.fullName,
         email: data.email,
         phoneNumber: data.phoneNumber || '',
         organization: data.organization || '',
-      });
+        profileImage: data.profileImage || '',
+      };
+      setUser(userPayload);
+      localStorage.setItem('cornai_user', JSON.stringify(userPayload));
       return true;
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
@@ -71,6 +82,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('cornai_token');
+    localStorage.removeItem('cornai_user');
     setToken(null);
     setUser(null);
   };
@@ -81,9 +93,32 @@ export const AuthProvider = ({ children }) => {
     try {
       const updatedUser = await authService.updateProfile(profileData);
       setUser(updatedUser);
+      localStorage.setItem('cornai_user', JSON.stringify(updatedUser));
       return true;
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update profile.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateProfileImage = async (formData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await authService.uploadProfileImage(formData);
+      setUser((prev) => {
+        const next = {
+          ...prev,
+          profileImage: res.profileImage,
+        };
+        localStorage.setItem('cornai_user', JSON.stringify(next));
+        return next;
+      });
+      return res;
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to upload profile image.');
       throw err;
     } finally {
       setLoading(false);
@@ -101,6 +136,7 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
+        updateProfileImage,
       }}
     >
       {children}

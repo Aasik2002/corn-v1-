@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios'; 
 import { useAuth } from '../context/AuthContext';
+import { getProfileImageUrl } from '../utils/imageUrl';
 import { User, Mail, Phone, Building, Save, LogOut, Camera, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 const Profile = () => {
-  const { user, updateProfile, logout } = useAuth();
+  const { user, updateProfile, updateProfileImage, logout } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [organization, setOrganization] = useState('');
   const [loading, setLoading] = useState(false);
   const [imageUploading, setImageUploading] = useState(false); 
+  const [imageError, setImageError] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   
@@ -23,6 +24,9 @@ const Profile = () => {
       setEmail(user.email || '');
       setPhoneNumber(user.phoneNumber || '');
       setOrganization(user.organization || '');
+      if (user.profileImage) {
+        setImageError(false);
+      }
     }
   }, [user]);
 
@@ -57,46 +61,27 @@ const Profile = () => {
 
   // Handle Profile Image Upload
   const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
     const formData = new FormData();
     formData.append('image', file);
 
     setImageUploading(true);
+    setImageError(false);
     setErrorMsg('');
     setSuccessMsg('');
 
-    try { 
-      let token = user?.token;
-      if (!token) {
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        token = storedUser?.token || localStorage.getItem('token');
-      }
-
-      if (!token) {
-        setErrorMsg('Authentication error: Token not found. Please log in again.');
-        setImageUploading(false);
-        return;
-      }
-
-      
-      const response = await axios.post('http://localhost:4000/api/auth/profile/image', formData, {
-        headers: {
-          Authorization: `Bearer ${token}` 
-        }
-      });
-      
-      setSuccessMsg('Profile image updated successfully! Please refresh to see changes.');
-      
-      
-      setTimeout(() => window.location.reload(), 1500);
-
+    try {
+      await updateProfileImage(formData);
+      setSuccessMsg('Profile photo updated permanently!');
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.response?.data?.message || 'Image upload failed. 401 Unauthorized.');
+      setErrorMsg(err.response?.data?.message || 'Failed to upload photo.');
     } finally {
       setImageUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -121,14 +106,19 @@ const Profile = () => {
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">User Profile Info</span>
             
             {/* Avatar Circle Container */}
-            <div className="relative group w-28 h-28 mx-auto">
-              <div className="w-full h-full rounded-full bg-emerald-950/40 border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden transition-all group-hover:border-emerald-400">
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="relative group w-28 h-28 mx-auto cursor-pointer"
+              title="Click to change profile photo"
+            >
+              <div className="w-full h-full rounded-full bg-emerald-950/40 border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden transition-all group-hover:border-emerald-400 shadow-md">
                 {imageUploading ? (
                   <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
-                ) : user?.profileImage ? (
+                ) : (user?.profileImage && !imageError) ? (
                   <img 
-                    src={`http://localhost:4000/${user.profileImage.replace(/\\/g, '/')}`} 
+                    src={getProfileImageUrl(user.profileImage)} 
                     alt="Profile" 
+                    onError={() => setImageError(true)}
                     className="w-full h-full object-cover"
                   />
                 ) : fullName ? (
@@ -152,7 +142,10 @@ const Profile = () => {
               {/* Edit Icon Overlay */}
               <button 
                 type="button" 
-                onClick={() => fileInputRef.current.click()} // பட்டனை க்ளிக் செய்தால் input open ஆகும்
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
                 disabled={imageUploading}
                 className="absolute bottom-1 right-1 p-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg cursor-pointer transition-colors active:scale-95 disabled:opacity-50"
                 title="Change Avatar"
