@@ -345,10 +345,69 @@ const emailScanReport = async (req, res) => {
     }
 };
 
+// @desc    Delete a single scan record permanently
+// @route   DELETE /api/scan/:id
+// @access  Private
+const deleteScan = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const scan = await Scan.findOne({ _id: id, user: req.user.id });
+        if (!scan) {
+            return res.status(404).json({ message: 'Scan not found or unauthorized' });
+        }
+        await Scan.deleteOne({ _id: id, user: req.user.id });
+        res.status(200).json({ 
+            success: true, 
+            message: 'Scan permanently deleted successfully', 
+            deletedId: id 
+        });
+    } catch (error) {
+        console.error('Delete Scan Error:', error.message);
+        res.status(500).json({ message: 'Failed to delete scan record', error: error.message });
+    }
+};
+
+// @desc    Delete scan history permanently (all, week data, month data)
+// @route   DELETE /api/scan/history
+// @access  Private
+const deleteScanHistory = async (req, res) => {
+    try {
+        const range = (req.query.range || req.body.range || 'all').toLowerCase();
+        let filter = { user: req.user.id };
+
+        const now = new Date();
+        if (range === 'week') {
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            filter.createdAt = { $gte: sevenDaysAgo };
+        } else if (range === 'month') {
+            const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            filter.createdAt = { $gte: thirtyDaysAgo };
+        } else if (range === 'all') {
+            filter = { user: req.user.id };
+        } else {
+            return res.status(400).json({ message: 'Invalid range parameter. Expected: all, week, or month.' });
+        }
+
+        const result = await Scan.deleteMany(filter);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully deleted ${result.deletedCount} scan(s) permanently (${range}).`,
+            deletedCount: result.deletedCount,
+            range
+        });
+    } catch (error) {
+        console.error('Bulk Delete Scan History Error:', error.message);
+        res.status(500).json({ message: 'Failed to delete scan history', error: error.message });
+    }
+};
+
 module.exports = { 
     analyzeScan, 
     getScanHistory, 
     getDashboardStats,
     downloadScanReportPDF,
-    emailScanReport
+    emailScanReport,
+    deleteScan,
+    deleteScanHistory
 };

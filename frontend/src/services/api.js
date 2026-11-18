@@ -86,6 +86,18 @@ export const scanService = {
     return response.data;
   },
 
+  deleteScan: async (id) => {
+    const response = await api.delete(`/scan/${id}`);
+    return response.data;
+  },
+
+  deleteHistory: async (range = 'all') => {
+    const response = await api.delete('/scan/history', {
+      params: { range },
+    });
+    return response.data;
+  },
+
   getStats: async () => {
     const response = await api.get('/scan/stats');
     return response.data;
