@@ -115,7 +115,6 @@ const NewScan = () => {
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setErrorMsg('');
-    startAnalysis(file);
   };
 
   const triggerFileSelect = () => {
@@ -246,6 +245,9 @@ const NewScan = () => {
     setScanResult(null);
     setLoadingPercent(0);
     setScanState('select');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -302,13 +304,22 @@ const NewScan = () => {
                       alt="Crop preview" 
                       className="w-full h-full object-cover rounded-2xl"
                     />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-200">
-                      <div className="p-3 rounded-full bg-rose-500 hover:bg-rose-600 transition-colors text-white" onClick={(e) => {
-                        e.stopPropagation();
-                        resetScanner();
-                      }}>
-                        <Trash2 className="w-5 h-5" />
-                      </div>
+                    {/* Centered Delete Button in middle of uploaded image section */}
+                    <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2 transition-all">
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resetScanner();
+                        }}
+                        title="Delete image"
+                        className="p-4 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white shadow-2xl border-2 border-white/20 transition-all cursor-pointer hover:scale-110 flex items-center justify-center"
+                      >
+                        <Trash2 className="w-6 h-6 text-white" />
+                      </button>
+                      <span className="text-xs font-semibold text-white drop-shadow bg-black/70 px-3 py-1 rounded-full border border-white/10 select-none">
+                        Remove Image
+                      </span>
                     </div>
                   </div>
                 ) : (

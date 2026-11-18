@@ -1,6 +1,9 @@
 const Scan = require('../models/Scan');
+const User = require('../models/User');
 const axios = require('axios');
 const FormData = require('form-data');
+const { generateCropReportPDF } = require('../utils/pdfGenerator');
+const { sendReportEmail } = require('../utils/emailService');
 
 // @desc    Upload image, get AI prediction, and save history
 // @route   POST /api/scan
@@ -191,4 +194,220 @@ const getDashboardStats = async (req, res) => {
     }
 };
 
-module.exports = { analyzeScan, getScanHistory, getDashboardStats };
+// @desc    Download PDF Scan Report (weekly or monthly)
+// @route   GET /api/scan/report/download
+// @access  Private
+const downloadScanReportPDF = async (req, res) => {
+    try {
+        const period = (req.query.period || 'weekly').toLowerCase();
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const now = new Date();
+        const timeLimit = period === 'monthly'
+            ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+            : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+        const scans = await Scan.find({
+            user: req.user.id,
+            createdAt: { $gte: timeLimit }
+        }).sort({ createdAt: -1 });
+
+        const normalizeDisease = (name) => {
+            if (!name) return 'Unknown';
+            const clean = name.toString().trim().toLowerCase().replace(/[\s_-]+/g, '');
+            if (clean.includes('rust')) return 'Common_Rust';
+            if (clean.includes('gray') || clean.includes('grey') || clean.includes('leafspot')) return 'Gray_Leaf';
+            if (clean.includes('health')) return 'Healthy';
+            if (clean.includes('notcorn') || clean.includes('noncorn')) return 'Not_Corn';
+            return name;
+        };
+
+        const healthyCount = scans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+        const cornScans = scans.filter(s => normalizeDisease(s.diseaseName) !== 'Not_Corn');
+        const vitality = cornScans.length > 0 
+            ? parseFloat(((healthyCount / cornScans.length) * 100).toFixed(1)) 
+            : (scans.length === 0 ? 100.0 : 0.0);
+
+        const cr = scans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
+        const gr = scans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
+        const ht = scans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+
+        const stats = {
+            total: scans.length,
+            vitality,
+            cr,
+            gr,
+            ht
+        };
+
+        const pdfBuffer = await generateCropReportPDF({
+            user,
+            period,
+            scans,
+            stats
+        });
+
+        const safeFilename = `CornAI_${period}_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+        return res.send(pdfBuffer);
+    } catch (error) {
+        console.error('PDF Generation Error:', error.message);
+        res.status(500).json({ message: 'Failed to generate PDF report', error: error.message });
+    }
+};
+
+// @desc    Email PDF Scan Report (weekly or monthly) to user's email
+// @route   POST /api/scan/report/email
+// @access  Private
+const emailScanReport = async (req, res) => {
+    try {
+        const period = (req.body.period || req.query.period || 'weekly').toLowerCase();
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const recipientEmail = req.body.recipientEmail || user.email;
+        if (!recipientEmail) {
+            return res.status(400).json({ message: 'No valid recipient email address found' });
+        }
+
+        const now = new Date();
+        const timeLimit = period === 'monthly'
+            ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+            : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+        const scans = await Scan.find({
+            user: req.user.id,
+            createdAt: { $gte: timeLimit }
+        }).sort({ createdAt: -1 });
+
+        const normalizeDisease = (name) => {
+            if (!name) return 'Unknown';
+            const clean = name.toString().trim().toLowerCase().replace(/[\s_-]+/g, '');
+            if (clean.includes('rust')) return 'Common_Rust';
+            if (clean.includes('gray') || clean.includes('grey') || clean.includes('leafspot')) return 'Gray_Leaf';
+            if (clean.includes('health')) return 'Healthy';
+            if (clean.includes('notcorn') || clean.includes('noncorn')) return 'Not_Corn';
+            return name;
+        };
+
+        const healthyCount = scans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+        const cornScans = scans.filter(s => normalizeDisease(s.diseaseName) !== 'Not_Corn');
+        const vitality = cornScans.length > 0 
+            ? parseFloat(((healthyCount / cornScans.length) * 100).toFixed(1)) 
+            : (scans.length === 0 ? 100.0 : 0.0);
+
+        const cr = scans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
+        const gr = scans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
+        const ht = scans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+
+        const stats = {
+            total: scans.length,
+            vitality,
+            cr,
+            gr,
+            ht
+        };
+
+        const pdfBuffer = await generateCropReportPDF({
+            user,
+            period,
+            scans,
+            stats
+        });
+
+        const safeFilename = `CornAI_${period}_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+        const emailResult = await sendReportEmail({
+            to: recipientEmail,
+            farmerName: user.fullName || 'Farmer',
+            period,
+            stats,
+            pdfBuffer,
+            filename: safeFilename
+        });
+
+        res.status(200).json({
+            message: `Report successfully dispatched to ${recipientEmail}!`,
+            period,
+            recipient: recipientEmail,
+            previewUrl: emailResult.previewUrl
+        });
+    } catch (error) {
+        console.error('Email Report Error:', error.message);
+        res.status(500).json({ message: 'Failed to dispatch report email', error: error.message });
+    }
+};
+
+// @desc    Delete a single scan record permanently
+// @route   DELETE /api/scan/:id
+// @access  Private
+const deleteScan = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const scan = await Scan.findOne({ _id: id, user: req.user.id });
+        if (!scan) {
+            return res.status(404).json({ message: 'Scan not found or unauthorized' });
+        }
+        await Scan.deleteOne({ _id: id, user: req.user.id });
+        res.status(200).json({ 
+            success: true, 
+            message: 'Scan permanently deleted successfully', 
+            deletedId: id 
+        });
+    } catch (error) {
+        console.error('Delete Scan Error:', error.message);
+        res.status(500).json({ message: 'Failed to delete scan record', error: error.message });
+    }
+};
+
+// @desc    Delete scan history permanently (all, week data, month data)
+// @route   DELETE /api/scan/history
+// @access  Private
+const deleteScanHistory = async (req, res) => {
+    try {
+        const range = (req.query.range || req.body.range || 'all').toLowerCase();
+        let filter = { user: req.user.id };
+
+        const now = new Date();
+        if (range === 'week') {
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            filter.createdAt = { $gte: sevenDaysAgo };
+        } else if (range === 'month') {
+            const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            filter.createdAt = { $gte: thirtyDaysAgo };
+        } else if (range === 'all') {
+            filter = { user: req.user.id };
+        } else {
+            return res.status(400).json({ message: 'Invalid range parameter. Expected: all, week, or month.' });
+        }
+
+        const result = await Scan.deleteMany(filter);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully deleted ${result.deletedCount} scan(s) permanently (${range}).`,
+            deletedCount: result.deletedCount,
+            range
+        });
+    } catch (error) {
+        console.error('Bulk Delete Scan History Error:', error.message);
+        res.status(500).json({ message: 'Failed to delete scan history', error: error.message });
+    }
+};
+
+module.exports = { 
+    analyzeScan, 
+    getScanHistory, 
+    getDashboardStats,
+    downloadScanReportPDF,
+    emailScanReport,
+    deleteScan,
+    deleteScanHistory
+};
