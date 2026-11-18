@@ -7,7 +7,9 @@ const {
     getScanHistory, 
     getDashboardStats,
     downloadScanReportPDF,
-    emailScanReport
+    emailScanReport,
+    deleteScan,
+    deleteScanHistory
 } = require('../controllers/scanController');
 const { protect } = require('../middleware/authMiddleware'); // Security Gate
 
@@ -23,6 +25,12 @@ router.post('/', protect, upload.single('file'), analyzeScan);
 
 // @route   GET /api/scan/history
 router.get('/history', protect, getScanHistory);
+
+// @route   DELETE /api/scan/history?range=all|week|month
+router.delete('/history', protect, deleteScanHistory);
+
+// @route   DELETE /api/scan/:id
+router.delete('/:id', protect, deleteScan);
 
 // @route   GET /api/scan/stats
 router.get('/stats', protect, getDashboardStats);
