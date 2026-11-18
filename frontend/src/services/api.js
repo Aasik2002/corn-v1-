@@ -90,6 +90,30 @@ export const scanService = {
     const response = await api.get('/scan/stats');
     return response.data;
   },
+
+  downloadReport: async (period = 'weekly') => {
+    const response = await api.get('/scan/report/download', {
+      params: { period },
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `CornAI_${period}_report_${Date.now()}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return true;
+  },
+
+  emailReport: async (period = 'weekly', recipientEmail = null) => {
+    const response = await api.post('/scan/report/email', {
+      period,
+      recipientEmail,
+    });
+    return response.data;
+  },
 };
 
 export default api;
