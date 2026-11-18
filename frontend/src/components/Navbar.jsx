@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getProfileImageUrl } from '../utils/imageUrl';
 import { Search, Bell, Settings, LogOut, User, Leaf } from 'lucide-react';
 
 const Navbar = () => {
@@ -64,6 +65,16 @@ const Navbar = () => {
           >
             About
           </NavLink>
+          <NavLink
+            to="/profile"
+            className={({ isActive }) =>
+              `text-sm font-medium transition-all duration-200 hover:text-emerald-400 ${
+                isActive ? 'text-emerald-400 border-b-2 border-emerald-500 pb-1 font-semibold' : 'text-slate-400'
+              }`
+            }
+          >
+            Profile
+          </NavLink>
         </div>
 
         {/* Right Section: Search & Actions */}
@@ -93,7 +104,16 @@ const Navbar = () => {
           <div className="flex items-center gap-3 border-l border-white/10 pl-4 ml-2">
             <Link to="/profile" className="flex items-center gap-2 group">
               <div className="w-9 h-9 rounded-full bg-emerald-950 border border-emerald-500/30 flex items-center justify-center overflow-hidden transition-all group-hover:border-emerald-400">
-                {user?.fullName ? (
+                {user?.profileImage ? (
+                  <img
+                    src={getProfileImageUrl(user.profileImage)}
+                    alt="Profile"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    className="w-full h-full object-cover"
+                  />
+                ) : user?.fullName ? (
                   <span className="text-emerald-400 font-bold text-sm">
                     {user.fullName.charAt(0).toUpperCase()}
                   </span>

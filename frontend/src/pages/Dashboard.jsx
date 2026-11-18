@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { scanService } from '../services/api';
 import {
   TrendingUp,
+  TrendingDown,
   Activity,
   Calendar,
   CalendarDays,
@@ -11,6 +12,7 @@ import {
   ChevronRight,
   RefreshCw,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   LineChart,
@@ -22,64 +24,219 @@ import {
   CartesianGrid,
 } from 'recharts';
 
-const Dashboard = () => {
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    vitality: 94.8,
-    weeklyTotal: 250,
-    weeklyCR: 120,
-    weeklyGR: 24,
-    weeklyHT: 24,
-    monthlyTotal: 1250,
-    monthlyCR: 150,
-    monthlyGR: 150,
-    monthlyHT: 150,
+const normalizeDisease = (name) => {
+  if (!name) return 'Unknown';
+  const clean = name.toString().trim().toLowerCase().replace(/[\s_-]+/g, '');
+  if (clean.includes('rust')) return 'Common_Rust';
+  if (clean.includes('gray') || clean.includes('grey') || clean.includes('leafspot')) return 'Gray_Leaf';
+  if (clean.includes('health')) return 'Healthy';
+  if (clean.includes('notcorn') || clean.includes('noncorn')) return 'Not_Corn';
+  return name;
+};
+
+const calculateStatsFromHistory = (historyData) => {
+  const scans = historyData || [];
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  // Vitality calculation (healthy scans ratio among corn leaves)
+  const healthyCount = scans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+  const cornScans = scans.filter(s => normalizeDisease(s.diseaseName) !== 'Not_Corn');
+  const vitality = cornScans.length > 0 
+    ? parseFloat(((healthyCount / cornScans.length) * 100).toFixed(1)) 
+    : (scans.length === 0 ? 100.0 : 0.0);
+
+  // Weekly counts (rolling 7 days)
+  const weeklyScans = scans.filter(s => new Date(s.createdAt || s.updatedAt || Date.now()) >= sevenDaysAgo);
+  const weeklyTotal = weeklyScans.length;
+  const weeklyCR = weeklyScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
+  const weeklyGR = weeklyScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
+  const weeklyHT = weeklyScans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+
+  // Monthly counts (rolling 30 days)
+  const monthlyScans = scans.filter(s => new Date(s.createdAt || s.updatedAt || Date.now()) >= thirtyDaysAgo);
+  const monthlyTotal = monthlyScans.length;
+  const monthlyCR = monthlyScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
+  const monthlyGR = monthlyScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
+  const monthlyHT = monthlyScans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+
+  // 1. Weekly view: Monday through Sunday of current week
+  const daysOfWeek = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  const monday = new Date(now);
+  const currentDay = monday.getDay();
+  const distanceToMonday = (currentDay + 6) % 7;
+  monday.setDate(monday.getDate() - distanceToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  const trendWeekly = daysOfWeek.map((dayName, index) => {
+    const targetDate = new Date(monday);
+    targetDate.setDate(monday.getDate() + index);
+
+    const dayScans = scans.filter(s => {
+      const d = new Date(s.createdAt || s.updatedAt || Date.now());
+      return (
+        d.getFullYear() === targetDate.getFullYear() &&
+        d.getMonth() === targetDate.getMonth() &&
+        d.getDate() === targetDate.getDate()
+      );
+    });
+
+    return {
+      name: dayName,
+      commonRust: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length,
+      grayLeaf: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length,
+      total: dayScans.length,
+      dateStr: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    };
   });
 
-  useEffect(() => {
-    const fetchStats = async () => {
+  // 2. Rolling 7 days view: 6 days ago -> Today
+  const dayNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const trendRolling7 = [];
+  for (let i = 6; i >= 0; i--) {
+    const targetDate = new Date(now);
+    targetDate.setDate(now.getDate() - i);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const dayScans = scans.filter(s => {
+      const d = new Date(s.createdAt || s.updatedAt || Date.now());
+      return (
+        d.getFullYear() === targetDate.getFullYear() &&
+        d.getMonth() === targetDate.getMonth() &&
+        d.getDate() === targetDate.getDate()
+      );
+    });
+
+    const dayName = i === 0 ? 'TODAY' : dayNames[targetDate.getDay()];
+    trendRolling7.push({
+      name: dayName,
+      commonRust: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length,
+      grayLeaf: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length,
+      total: dayScans.length,
+      dateStr: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    });
+  }
+
+  return {
+    vitality,
+    totalScans: scans.length,
+    weekly: { total: weeklyTotal, cr: weeklyCR, gr: weeklyGR, ht: weeklyHT },
+    monthly: { total: monthlyTotal, cr: monthlyCR, gr: monthlyGR, ht: monthlyHT },
+    trendWeekly,
+    trendRolling7,
+  };
+};
+
+const Dashboard = () => {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [trendMode, setTrendMode] = useState('weekly'); // 'weekly' (MON-SUN) or 'rolling7' (Last 7 Days)
+
+  const [stats, setStats] = useState({
+    vitality: 100,
+    weeklyTotal: 0,
+    weeklyCR: 0,
+    weeklyGR: 0,
+    weeklyHT: 0,
+    monthlyTotal: 0,
+    monthlyCR: 0,
+    monthlyGR: 0,
+    monthlyHT: 0,
+  });
+
+  const [weeklyTrend, setWeeklyTrend] = useState([
+    { name: 'MON', commonRust: 0, grayLeaf: 0 },
+    { name: 'TUE', commonRust: 0, grayLeaf: 0 },
+    { name: 'WED', commonRust: 0, grayLeaf: 0 },
+    { name: 'THU', commonRust: 0, grayLeaf: 0 },
+    { name: 'FRI', commonRust: 0, grayLeaf: 0 },
+    { name: 'SAT', commonRust: 0, grayLeaf: 0 },
+    { name: 'SUN', commonRust: 0, grayLeaf: 0 },
+  ]);
+
+  const [rollingTrend, setRollingTrend] = useState([]);
+
+  const fetchStats = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      let statsResult = null;
       try {
-        const historyData = await scanService.getHistory();
-        setHistory(historyData);
-        
-        // Calculate dynamically if history database has entries
-        if (historyData && historyData.length > 0) {
-          const healthyCount = historyData.filter(s => s.diseaseName === 'Healthy').length;
-          const total = historyData.length;
-          const dynamicVitality = total > 0 ? ((healthyCount / total) * 100).toFixed(1) : 94.8;
-          
-          setStats(prev => ({
-            ...prev,
-            vitality: parseFloat(dynamicVitality) > 0 ? parseFloat(dynamicVitality) : 94.8,
-          }));
-        }
+        statsResult = await scanService.getStats();
       } catch (err) {
-        console.error('Failed to fetch dashboard scan history:', err);
-      } finally {
-        setLoading(false);
+        console.warn('Backend /scan/stats endpoint unavailable, falling back to history calculation:', err.message);
       }
-    };
-    
-    fetchStats();
+
+      if (statsResult && statsResult.weekly) {
+        setStats({
+          vitality: statsResult.vitality,
+          weeklyTotal: statsResult.weekly.total,
+          weeklyCR: statsResult.weekly.cr,
+          weeklyGR: statsResult.weekly.gr,
+          weeklyHT: statsResult.weekly.ht,
+          monthlyTotal: statsResult.monthly.total,
+          monthlyCR: statsResult.monthly.cr,
+          monthlyGR: statsResult.monthly.gr,
+          monthlyHT: statsResult.monthly.ht,
+        });
+        if (statsResult.trendWeekly && statsResult.trendWeekly.length > 0) {
+          setWeeklyTrend(statsResult.trendWeekly);
+        }
+        if (statsResult.trendRolling7 && statsResult.trendRolling7.length > 0) {
+          setRollingTrend(statsResult.trendRolling7);
+        }
+      } else {
+        const historyData = await scanService.getHistory();
+        const computed = calculateStatsFromHistory(historyData);
+        setStats({
+          vitality: computed.vitality,
+          weeklyTotal: computed.weekly.total,
+          weeklyCR: computed.weekly.cr,
+          weeklyGR: computed.weekly.gr,
+          weeklyHT: computed.weekly.ht,
+          monthlyTotal: computed.monthly.total,
+          monthlyCR: computed.monthly.cr,
+          monthlyGR: computed.monthly.gr,
+          monthlyHT: computed.monthly.ht,
+        });
+        setWeeklyTrend(computed.trendWeekly);
+        setRollingTrend(computed.trendRolling7);
+      }
+    } catch (err) {
+      console.error('Failed to load dashboard statistics:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  // Disease Trend Analysis (7-day pathogen detection frequency data matching screenshot line series)
-  const trendData = [
-    { name: 'MON', commonRust: 28, grayLeaf: 12 },
-    { name: 'TUE', commonRust: 45, grayLeaf: 22 },
-    { name: 'WED', commonRust: 35, grayLeaf: 15 },
-    { name: 'THU', commonRust: 68, grayLeaf: 28 },
-    { name: 'FRI', commonRust: 60, grayLeaf: 31 },
-    { name: 'SAT', commonRust: 84, grayLeaf: 26 },
-    { name: 'SUN', commonRust: 75, grayLeaf: 34 },
-  ];
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  // Selected trend data
+  const activeTrendData = trendMode === 'weekly' ? weeklyTrend : rollingTrend;
+
+  // Determine dynamic scale for Y-axis
+  const maxPathogenCount = Math.max(
+    ...activeTrendData.map((d) => Math.max(d.commonRust || 0, d.grayLeaf || 0)),
+    0
+  );
+  const yAxisMax =
+    maxPathogenCount === 0
+      ? 5
+      : maxPathogenCount <= 5
+      ? 5
+      : maxPathogenCount <= 10
+      ? 10
+      : maxPathogenCount <= 25
+      ? 25
+      : Math.ceil(maxPathogenCount * 1.25);
 
   return (
     <div className="max-w-7xl mx-auto px-4 pb-12">
-      
       {/* Title Header with styled border box */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
         <div className="relative inline-block px-8 py-3.5 glass-panel rounded-2xl border-emerald-500/20">
           <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-emerald-500 rounded-tl-lg"></div>
           <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-emerald-500 rounded-tr-lg"></div>
@@ -87,15 +244,24 @@ const Dashboard = () => {
           <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-emerald-500 rounded-br-lg"></div>
           <h1 className="text-xl font-bold text-white tracking-wide uppercase">Field Overview</h1>
         </div>
-        
-        <div className="text-xs text-slate-400 font-medium">
-          Last updated: {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-400 font-medium">
+            Last updated: {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </div>
+          <button
+            onClick={fetchStats}
+            disabled={refreshing}
+            title="Refresh statistics"
+            className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-emerald-400' : ''}`} />
+          </button>
         </div>
       </div>
 
       {/* Top Row: 3 Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        
         {/* Card 1: Crop Vitality Score */}
         <div className="glass-panel rounded-3xl p-6 relative overflow-hidden transition-all duration-300 hover:scale-[1.01]">
           <div className="flex items-start justify-between">
@@ -105,22 +271,34 @@ const Dashboard = () => {
               </div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Crop Vitality Score</span>
             </div>
-            <span className="text-xs font-semibold text-emerald-400 flex items-center gap-0.5">
-              +4.2% <TrendingUp className="w-3 h-3" />
-            </span>
+            {stats.vitality >= 70 ? (
+              <span className="text-xs font-semibold text-emerald-400 flex items-center gap-0.5">
+                Optimal <TrendingUp className="w-3 h-3" />
+              </span>
+            ) : stats.vitality >= 40 ? (
+              <span className="text-xs font-semibold text-amber-400 flex items-center gap-0.5">
+                Warning <TrendingDown className="w-3 h-3" />
+              </span>
+            ) : (
+              <span className="text-xs font-semibold text-rose-400 flex items-center gap-0.5">
+                Critical <TrendingDown className="w-3 h-3" />
+              </span>
+            )}
           </div>
-          
+
           <div className="mt-4">
             <h2 className="text-4xl font-extrabold text-[#84CC16]">{stats.vitality}%</h2>
             <div className="mt-4 space-y-1">
               <div className="flex justify-between text-[10px] font-medium text-slate-400">
                 <span>Optimal Growth Range</span>
-                <span className="text-emerald-400">Healthy</span>
+                <span className={stats.vitality >= 70 ? 'text-emerald-400' : stats.vitality >= 40 ? 'text-amber-400' : 'text-rose-400'}>
+                  {stats.vitality >= 70 ? 'Healthy' : stats.vitality >= 40 ? 'Moderate Alert' : 'Pathogen Alert'}
+                </span>
               </div>
               <div className="w-full h-2 rounded-full bg-emerald-950/40 border border-emerald-950/80 overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-gradient-to-r from-emerald-500 to-[#84CC16] rounded-full transition-all duration-1000"
-                  style={{ width: `${stats.vitality}%` }}
+                  style={{ width: `${Math.min(Math.max(stats.vitality, 0), 100)}%` }}
                 ></div>
               </div>
             </div>
@@ -135,17 +313,17 @@ const Dashboard = () => {
             </div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Weekly Total Scans</span>
           </div>
-          
+
           <div className="mt-4">
             <h2 className="text-4xl font-extrabold text-blue-400">{stats.weeklyTotal}</h2>
             <div className="flex gap-4 mt-4 text-[11px] font-bold text-slate-400">
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Common Rust scans in past 7 days">
                 CR <span className="text-blue-400 ml-1">{stats.weeklyCR}</span>
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Gray Leaf Spot scans in past 7 days">
                 GR <span className="text-blue-400 ml-1">{stats.weeklyGR}</span>
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Healthy leaf scans in past 7 days">
                 HT <span className="text-blue-400 ml-1">{stats.weeklyHT}</span>
               </span>
             </div>
@@ -160,109 +338,193 @@ const Dashboard = () => {
             </div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Total Scans</span>
           </div>
-          
+
           <div className="mt-4">
             <h2 className="text-4xl font-extrabold text-[#84CC16]">{stats.monthlyTotal}</h2>
             <div className="flex gap-4 mt-4 text-[11px] font-bold text-slate-400">
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Common Rust scans in past 30 days">
                 CR <span className="text-[#84CC16] ml-1">{stats.monthlyCR}</span>
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Gray Leaf Spot scans in past 30 days">
                 GR <span className="text-[#84CC16] ml-1">{stats.monthlyGR}</span>
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Healthy leaf scans in past 30 days">
                 HT <span className="text-[#84CC16] ml-1">{stats.monthlyHT}</span>
               </span>
             </div>
           </div>
         </div>
-
       </div>
 
       {/* Middle Row: Disease Trend Analysis & Safe Zone Indicator */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        
         {/* Left Side: Disease Trend Analysis Chart */}
         <div className="glass-panel rounded-3xl p-6 lg:col-span-2">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <div>
               <h3 className="text-sm font-extrabold text-white tracking-wide">Disease Trend Analysis</h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">7-day pathogen detection frequency</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {trendMode === 'weekly'
+                  ? 'Current week pathogen detection frequency (Mon - Sun)'
+                  : 'Rolling 7-day pathogen detection frequency'}
+              </p>
             </div>
-            
-            {/* Chart Legend */}
-            <div className="flex items-center gap-4 text-[10px] font-bold">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#84CC16]"></span>
-                <span className="text-slate-300">Common Rust</span>
+
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Trend view toggle */}
+              <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-0.5 text-[10px] font-bold">
+                <button
+                  onClick={() => setTrendMode('weekly')}
+                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                    trendMode === 'weekly'
+                      ? 'bg-[#84CC16] text-[#0E1611] shadow-sm font-extrabold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  This Week
+                </button>
+                <button
+                  onClick={() => setTrendMode('rolling7')}
+                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                    trendMode === 'rolling7'
+                      ? 'bg-[#84CC16] text-[#0E1611] shadow-sm font-extrabold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Last 7 Days
+                </button>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-                <span className="text-slate-300">Gray Leaf Spot</span>
+
+              {/* Chart Legend */}
+              <div className="flex items-center gap-4 text-[10px] font-bold">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#84CC16]"></span>
+                  <span className="text-slate-300">Common Rust</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                  <span className="text-slate-300">Gray Leaf Spot</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="h-60 w-full">
+          <div className="h-60 w-full relative">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+              <LineChart data={activeTrendData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                <XAxis 
-                  dataKey="name" 
-                  stroke="rgba(255,255,255,0.3)" 
-                  fontSize={10} 
-                  fontWeight="bold" 
-                  tickLine={false} 
-                  axisLine={false} 
+                <XAxis
+                  dataKey="name"
+                  stroke="rgba(255,255,255,0.3)"
+                  fontSize={10}
+                  fontWeight="bold"
+                  tickLine={false}
+                  axisLine={false}
                 />
-                <YAxis 
-                  stroke="rgba(255,255,255,0.3)" 
-                  fontSize={10} 
-                  fontWeight="bold" 
-                  tickLine={false} 
-                  axisLine={false} 
-                  domain={[0, 100]}
+                <YAxis
+                  stroke="rgba(255,255,255,0.3)"
+                  fontSize={10}
+                  fontWeight="bold"
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                  domain={[0, yAxisMax]}
                 />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#111E15', 
-                    borderColor: 'rgba(255,255,255,0.1)', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#111E15',
+                    borderColor: 'rgba(255,255,255,0.1)',
                     borderRadius: '12px',
-                    color: '#FFF' 
-                  }} 
+                    color: '#FFF',
+                  }}
                   itemStyle={{ fontSize: '11px', fontWeight: 'bold' }}
                   labelStyle={{ fontSize: '11px', color: '#10B981', fontWeight: 'bold' }}
+                  formatter={(value, name) => [
+                    `${value} scan${value === 1 ? '' : 's'}`,
+                    name === 'commonRust' ? 'Common Rust' : name === 'grayLeaf' ? 'Gray Leaf Spot' : name,
+                  ]}
+                  labelFormatter={(label, payload) => {
+                    if (payload && payload[0] && payload[0].payload) {
+                      const item = payload[0].payload;
+                      return `${item.name} (${item.dateStr || ''})`;
+                    }
+                    return label;
+                  }}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="commonRust" 
-                  stroke="#84CC16" 
-                  strokeWidth={3} 
-                  dot={{ r: 4, strokeWidth: 0, fill: '#84CC16' }} 
-                  activeDot={{ r: 6 }} 
+                <Line
+                  name="commonRust"
+                  type="monotone"
+                  dataKey="commonRust"
+                  stroke="#84CC16"
+                  strokeWidth={3}
+                  dot={{ r: 4, strokeWidth: 0, fill: '#84CC16' }}
+                  activeDot={{ r: 6 }}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="grayLeaf" 
-                  stroke="#059669" 
-                  strokeWidth={3} 
-                  dot={{ r: 4, strokeWidth: 0, fill: '#059669' }} 
-                  activeDot={{ r: 6 }} 
+                <Line
+                  name="grayLeaf"
+                  type="monotone"
+                  dataKey="grayLeaf"
+                  stroke="#059669"
+                  strokeWidth={3}
+                  dot={{ r: 4, strokeWidth: 0, fill: '#059669' }}
+                  activeDot={{ r: 6 }}
                 />
               </LineChart>
             </ResponsiveContainer>
+
+            {maxPathogenCount === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="px-4 py-2 rounded-xl bg-black/40 border border-emerald-500/20 text-emerald-400 text-xs font-semibold backdrop-blur-sm">
+                  ✨ No disease detected in this period — Crop vitality optimal
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right Side: Safe Zone / Corn character card */}
         <div className="glass-panel rounded-3xl p-6 flex flex-col justify-between items-center text-center relative overflow-hidden">
-          
           <div>
-            <h3 className="text-sm font-extrabold text-[#84CC16] tracking-wider uppercase mb-1">Your Farm is Safe zone</h3>
+            <h3
+              className={`text-sm font-extrabold tracking-wider uppercase mb-1 ${
+                stats.vitality >= 70
+                  ? 'text-[#84CC16]'
+                  : stats.vitality >= 40
+                  ? 'text-amber-400'
+                  : 'text-rose-400'
+              }`}
+            >
+              {stats.vitality >= 70
+                ? 'Your Farm is Safe zone'
+                : stats.vitality >= 40
+                ? 'Moderate Risk Alert'
+                : 'Disease Risk Alert'}
+            </h3>
+            <p className="text-[10px] text-slate-400">
+              {stats.vitality >= 70
+                ? 'Pathogens within safe ecological limits'
+                : stats.vitality >= 40
+                ? 'Symptoms observed in local fields'
+                : 'Fungal outbreaks require fast fungicide action'}
+            </p>
             <div className="flex justify-center mt-3">
-              {/* Smiling Face Emoji */}
-              <div className="w-16 h-16 rounded-full bg-[#84CC16]/10 border border-[#84CC16]/20 flex items-center justify-center">
-                <Smile className="w-10 h-10 text-[#84CC16]" />
+              {/* Dynamic Face / Shield Icon */}
+              <div
+                className={`w-16 h-16 rounded-full border flex items-center justify-center transition-colors ${
+                  stats.vitality >= 70
+                    ? 'bg-[#84CC16]/10 border-[#84CC16]/20'
+                    : stats.vitality >= 40
+                    ? 'bg-amber-500/10 border-amber-500/20'
+                    : 'bg-rose-500/10 border-rose-500/20'
+                }`}
+              >
+                {stats.vitality >= 70 ? (
+                  <Smile className="w-10 h-10 text-[#84CC16]" />
+                ) : stats.vitality >= 40 ? (
+                  <ShieldCheck className="w-10 h-10 text-amber-400" />
+                ) : (
+                  <AlertTriangle className="w-10 h-10 text-rose-400" />
+                )}
               </div>
             </div>
           </div>
@@ -300,20 +562,18 @@ const Dashboard = () => {
 
               {/* Big Smile */}
               <path d="M43 47C43 51 57 51 57 47H43Z" fill="#BE123C" />
-              <path d="M47 47C47 49 53 49 53 47H47Z" fill="white" /> {/* Teeth */}
-              
+              <path d="M47 47C47 49 53 49 53 47H47Z" fill="white" />
+
               {/* Hands raised up */}
               <path d="M34 50C25 45 22 38 24 35C26 32 30 40 36 46" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
               <path d="M66 50C75 45 78 38 76 35C74 32 70 40 64 46" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
-              
+
               {/* Legs */}
               <line x1="45" y1="70" x2="45" y2="82" stroke="#047857" strokeWidth="3" />
               <line x1="55" y1="70" x2="55" y2="82" stroke="#047857" strokeWidth="3" />
             </svg>
           </div>
-
         </div>
-
       </div>
 
       {/* Bottom Panel: Premium Insight */}
@@ -340,7 +600,6 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
     </div>
   );
 };

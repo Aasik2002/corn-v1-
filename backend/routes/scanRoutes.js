@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { analyzeScan,getScanHistory } = require('../controllers/scanController');
+const { analyzeScan, getScanHistory, getDashboardStats } = require('../controllers/scanController');
 const { protect } = require('../middleware/authMiddleware'); // Security Gate
 
 // Setup Multer to store the uploaded image temporarily in memory
@@ -17,5 +17,8 @@ router.post('/', protect, upload.single('file'), analyzeScan);
 
 // @route   GET /api/scan/history
 router.get('/history', protect, getScanHistory);
+
+// @route   GET /api/scan/stats
+router.get('/stats', protect, getDashboardStats);
 
 module.exports = router;
