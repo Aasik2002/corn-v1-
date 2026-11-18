@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { scanService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import {
   TrendingUp,
   TrendingDown,
@@ -13,6 +14,14 @@ import {
   RefreshCw,
   Sparkles,
   AlertTriangle,
+  Download,
+  Mail,
+  FileText,
+  CheckCircle2,
+  X,
+  ExternalLink,
+  Send,
+  Loader2,
 } from 'lucide-react';
 import {
   LineChart,
@@ -41,25 +50,32 @@ const calculateStatsFromHistory = (historyData) => {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   // Vitality calculation (healthy scans ratio among corn leaves)
-  const healthyCount = scans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
-  const cornScans = scans.filter(s => normalizeDisease(s.diseaseName) !== 'Not_Corn');
-  const vitality = cornScans.length > 0 
-    ? parseFloat(((healthyCount / cornScans.length) * 100).toFixed(1)) 
-    : (scans.length === 0 ? 100.0 : 0.0);
+  const healthyCount = scans.filter((s) => normalizeDisease(s.diseaseName) === 'Healthy').length;
+  const cornScans = scans.filter((s) => normalizeDisease(s.diseaseName) !== 'Not_Corn');
+  const vitality =
+    cornScans.length > 0
+      ? parseFloat(((healthyCount / cornScans.length) * 100).toFixed(1))
+      : scans.length === 0
+      ? 100.0
+      : 0.0;
 
   // Weekly counts (rolling 7 days)
-  const weeklyScans = scans.filter(s => new Date(s.createdAt || s.updatedAt || Date.now()) >= sevenDaysAgo);
+  const weeklyScans = scans.filter(
+    (s) => new Date(s.createdAt || s.updatedAt || Date.now()) >= sevenDaysAgo
+  );
   const weeklyTotal = weeklyScans.length;
-  const weeklyCR = weeklyScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
-  const weeklyGR = weeklyScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
-  const weeklyHT = weeklyScans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+  const weeklyCR = weeklyScans.filter((s) => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
+  const weeklyGR = weeklyScans.filter((s) => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
+  const weeklyHT = weeklyScans.filter((s) => normalizeDisease(s.diseaseName) === 'Healthy').length;
 
   // Monthly counts (rolling 30 days)
-  const monthlyScans = scans.filter(s => new Date(s.createdAt || s.updatedAt || Date.now()) >= thirtyDaysAgo);
+  const monthlyScans = scans.filter(
+    (s) => new Date(s.createdAt || s.updatedAt || Date.now()) >= thirtyDaysAgo
+  );
   const monthlyTotal = monthlyScans.length;
-  const monthlyCR = monthlyScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
-  const monthlyGR = monthlyScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
-  const monthlyHT = monthlyScans.filter(s => normalizeDisease(s.diseaseName) === 'Healthy').length;
+  const monthlyCR = monthlyScans.filter((s) => normalizeDisease(s.diseaseName) === 'Common_Rust').length;
+  const monthlyGR = monthlyScans.filter((s) => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length;
+  const monthlyHT = monthlyScans.filter((s) => normalizeDisease(s.diseaseName) === 'Healthy').length;
 
   // 1. Weekly view: Monday through Sunday of current week
   const daysOfWeek = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
@@ -73,7 +89,7 @@ const calculateStatsFromHistory = (historyData) => {
     const targetDate = new Date(monday);
     targetDate.setDate(monday.getDate() + index);
 
-    const dayScans = scans.filter(s => {
+    const dayScans = scans.filter((s) => {
       const d = new Date(s.createdAt || s.updatedAt || Date.now());
       return (
         d.getFullYear() === targetDate.getFullYear() &&
@@ -84,8 +100,8 @@ const calculateStatsFromHistory = (historyData) => {
 
     return {
       name: dayName,
-      commonRust: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length,
-      grayLeaf: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length,
+      commonRust: dayScans.filter((s) => normalizeDisease(s.diseaseName) === 'Common_Rust').length,
+      grayLeaf: dayScans.filter((s) => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length,
       total: dayScans.length,
       dateStr: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     };
@@ -99,7 +115,7 @@ const calculateStatsFromHistory = (historyData) => {
     targetDate.setDate(now.getDate() - i);
     targetDate.setHours(0, 0, 0, 0);
 
-    const dayScans = scans.filter(s => {
+    const dayScans = scans.filter((s) => {
       const d = new Date(s.createdAt || s.updatedAt || Date.now());
       return (
         d.getFullYear() === targetDate.getFullYear() &&
@@ -111,8 +127,8 @@ const calculateStatsFromHistory = (historyData) => {
     const dayName = i === 0 ? 'TODAY' : dayNames[targetDate.getDay()];
     trendRolling7.push({
       name: dayName,
-      commonRust: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Common_Rust').length,
-      grayLeaf: dayScans.filter(s => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length,
+      commonRust: dayScans.filter((s) => normalizeDisease(s.diseaseName) === 'Common_Rust').length,
+      grayLeaf: dayScans.filter((s) => normalizeDisease(s.diseaseName) === 'Gray_Leaf').length,
       total: dayScans.length,
       dateStr: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     });
@@ -129,9 +145,18 @@ const calculateStatsFromHistory = (historyData) => {
 };
 
 const Dashboard = () => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [trendMode, setTrendMode] = useState('weekly'); // 'weekly' (MON-SUN) or 'rolling7' (Last 7 Days)
+
+  // Report Generation & Email State
+  const [downloadingPeriod, setDownloadingPeriod] = useState(null); // 'weekly' | 'monthly' | null
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState('weekly');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [reportFeedback, setReportFeedback] = useState(null); // { type: 'success' | 'error', message, previewUrl }
 
   const [stats, setStats] = useState({
     vitality: 100,
@@ -156,6 +181,13 @@ const Dashboard = () => {
   ]);
 
   const [rollingTrend, setRollingTrend] = useState([]);
+
+  // Pre-fill recipient email when user context loads
+  useEffect(() => {
+    if (user?.email && !recipientEmail) {
+      setRecipientEmail(user.email);
+    }
+  }, [user, recipientEmail]);
 
   const fetchStats = useCallback(async () => {
     setRefreshing(true);
@@ -214,6 +246,54 @@ const Dashboard = () => {
     fetchStats();
   }, [fetchStats]);
 
+  // Handle direct PDF Download
+  const handleDownloadReport = async (period) => {
+    try {
+      setDownloadingPeriod(period);
+      setReportFeedback(null);
+      await scanService.downloadReport(period);
+    } catch (err) {
+      console.error('Failed to download report:', err);
+      alert('Could not download PDF report. Please verify backend server status.');
+    } finally {
+      setDownloadingPeriod(null);
+    }
+  };
+
+  // Open the Email Report modal
+  const openEmailModal = (period = 'weekly') => {
+    setSelectedPeriod(period);
+    setRecipientEmail(user?.email || '');
+    setReportFeedback(null);
+    setEmailModalOpen(true);
+  };
+
+  // Submit Report Email Dispatch
+  const handleSendEmailReport = async (e) => {
+    if (e) e.preventDefault();
+    if (!recipientEmail) return;
+
+    setSendingEmail(true);
+    setReportFeedback(null);
+
+    try {
+      const response = await scanService.emailReport(selectedPeriod, recipientEmail);
+      setReportFeedback({
+        type: 'success',
+        message: response.message || `Diagnostic report successfully emailed to ${recipientEmail}!`,
+        previewUrl: response.previewUrl || null,
+      });
+    } catch (err) {
+      console.error('Failed to send report email:', err);
+      setReportFeedback({
+        type: 'error',
+        message: err.response?.data?.message || 'Failed to dispatch report email. Please check server SMTP settings.',
+      });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   // Selected trend data
   const activeTrendData = trendMode === 'weekly' ? weeklyTrend : rollingTrend;
 
@@ -235,7 +315,7 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 pb-12">
-      {/* Title Header with styled border box */}
+      {/* Title Header with styled border box & quick actions */}
       <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
         <div className="relative inline-block px-8 py-3.5 glass-panel rounded-2xl border-emerald-500/20">
           <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-emerald-500 rounded-tl-lg"></div>
@@ -245,10 +325,20 @@ const Dashboard = () => {
           <h1 className="text-xl font-bold text-white tracking-wide uppercase">Field Overview</h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="text-xs text-slate-400 font-medium">
             Last updated: {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </div>
+
+          {/* Quick PDF & Email Report Dispatch Button */}
+          <button
+            onClick={() => openEmailModal('weekly')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 hover:text-emerald-300 font-bold text-xs transition-all cursor-pointer shadow-sm"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Generate PDF Report</span>
+          </button>
+
           <button
             onClick={fetchStats}
             disabled={refreshing}
@@ -291,7 +381,15 @@ const Dashboard = () => {
             <div className="mt-4 space-y-1">
               <div className="flex justify-between text-[10px] font-medium text-slate-400">
                 <span>Optimal Growth Range</span>
-                <span className={stats.vitality >= 70 ? 'text-emerald-400' : stats.vitality >= 40 ? 'text-amber-400' : 'text-rose-400'}>
+                <span
+                  className={
+                    stats.vitality >= 70
+                      ? 'text-emerald-400'
+                      : stats.vitality >= 40
+                      ? 'text-amber-400'
+                      : 'text-rose-400'
+                  }
+                >
                   {stats.vitality >= 70 ? 'Healthy' : stats.vitality >= 40 ? 'Moderate Alert' : 'Pathogen Alert'}
                 </span>
               </div>
@@ -305,52 +403,102 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Card 2: Weekly Total Scans */}
-        <div className="glass-panel rounded-3xl p-6 relative overflow-hidden transition-all duration-300 hover:scale-[1.01]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-              <Activity className="w-5 h-5 text-blue-400" />
-            </div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Weekly Total Scans</span>
-          </div>
+        {/* Card 2: Weekly Total Scans + Report Action Buttons */}
+        <div className="glass-panel rounded-3xl p-6 relative overflow-hidden transition-all duration-300 hover:scale-[1.01] flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                  <Activity className="w-5 h-5 text-blue-400" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Weekly Total Scans</span>
+              </div>
 
-          <div className="mt-4">
-            <h2 className="text-4xl font-extrabold text-blue-400">{stats.weeklyTotal}</h2>
-            <div className="flex gap-4 mt-4 text-[11px] font-bold text-slate-400">
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Common Rust scans in past 7 days">
-                CR <span className="text-blue-400 ml-1">{stats.weeklyCR}</span>
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Gray Leaf Spot scans in past 7 days">
-                GR <span className="text-blue-400 ml-1">{stats.weeklyGR}</span>
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Healthy leaf scans in past 7 days">
-                HT <span className="text-blue-400 ml-1">{stats.weeklyHT}</span>
-              </span>
+              {/* Action buttons: Download PDF & Email */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleDownloadReport('weekly')}
+                  disabled={downloadingPeriod === 'weekly'}
+                  title="Download Weekly PDF Report"
+                  className="px-2 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold disabled:opacity-50"
+                >
+                  <Download className={`w-3 h-3 ${downloadingPeriod === 'weekly' ? 'animate-bounce' : ''}`} />
+                  <span>PDF</span>
+                </button>
+                <button
+                  onClick={() => openEmailModal('weekly')}
+                  title="Email Weekly Diagnostic Report"
+                  className="px-2 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                >
+                  <Mail className="w-3 h-3" />
+                  <span>Email</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <h2 className="text-4xl font-extrabold text-blue-400">{stats.weeklyTotal}</h2>
+              <div className="flex gap-3 mt-4 text-[11px] font-bold text-slate-400 flex-wrap">
+                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Common Rust scans in past 7 days">
+                  CR <span className="text-blue-400 ml-1">{stats.weeklyCR}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Gray Leaf Spot scans in past 7 days">
+                  GR <span className="text-blue-400 ml-1">{stats.weeklyGR}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Healthy leaf scans in past 7 days">
+                  HT <span className="text-blue-400 ml-1">{stats.weeklyHT}</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Monthly Total Scans */}
-        <div className="glass-panel rounded-3xl p-6 relative overflow-hidden transition-all duration-300 hover:scale-[1.01]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#84CC16]/10 border border-[#84CC16]/20 flex items-center justify-center">
-              <CalendarDays className="w-5 h-5 text-[#84CC16]" />
-            </div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Total Scans</span>
-          </div>
+        {/* Card 3: Monthly Total Scans + Report Action Buttons */}
+        <div className="glass-panel rounded-3xl p-6 relative overflow-hidden transition-all duration-300 hover:scale-[1.01] flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#84CC16]/10 border border-[#84CC16]/20 flex items-center justify-center">
+                  <CalendarDays className="w-5 h-5 text-[#84CC16]" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Total Scans</span>
+              </div>
 
-          <div className="mt-4">
-            <h2 className="text-4xl font-extrabold text-[#84CC16]">{stats.monthlyTotal}</h2>
-            <div className="flex gap-4 mt-4 text-[11px] font-bold text-slate-400">
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Common Rust scans in past 30 days">
-                CR <span className="text-[#84CC16] ml-1">{stats.monthlyCR}</span>
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Gray Leaf Spot scans in past 30 days">
-                GR <span className="text-[#84CC16] ml-1">{stats.monthlyGR}</span>
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Healthy leaf scans in past 30 days">
-                HT <span className="text-[#84CC16] ml-1">{stats.monthlyHT}</span>
-              </span>
+              {/* Action buttons: Download PDF & Email */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleDownloadReport('monthly')}
+                  disabled={downloadingPeriod === 'monthly'}
+                  title="Download Monthly PDF Report"
+                  className="px-2 py-1 rounded-lg bg-[#84CC16]/10 hover:bg-[#84CC16]/20 border border-[#84CC16]/20 text-[#84CC16] hover:text-lime-300 transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold disabled:opacity-50"
+                >
+                  <Download className={`w-3 h-3 ${downloadingPeriod === 'monthly' ? 'animate-bounce' : ''}`} />
+                  <span>PDF</span>
+                </button>
+                <button
+                  onClick={() => openEmailModal('monthly')}
+                  title="Email Monthly Diagnostic Report"
+                  className="px-2 py-1 rounded-lg bg-[#84CC16]/10 hover:bg-[#84CC16]/20 border border-[#84CC16]/20 text-[#84CC16] hover:text-lime-300 transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                >
+                  <Mail className="w-3 h-3" />
+                  <span>Email</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <h2 className="text-4xl font-extrabold text-[#84CC16]">{stats.monthlyTotal}</h2>
+              <div className="flex gap-3 mt-4 text-[11px] font-bold text-slate-400 flex-wrap">
+                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Common Rust scans in past 30 days">
+                  CR <span className="text-[#84CC16] ml-1">{stats.monthlyCR}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Gray Leaf Spot scans in past 30 days">
+                  GR <span className="text-[#84CC16] ml-1">{stats.monthlyGR}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/5" title="Healthy leaf scans in past 30 days">
+                  HT <span className="text-[#84CC16] ml-1">{stats.monthlyHT}</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -532,9 +680,7 @@ const Dashboard = () => {
           {/* Cartoon Corn character holding hands up (SVG) */}
           <div className="w-36 h-36 mt-4 relative z-10 flex items-end">
             <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {/* Corn body */}
               <rect x="38" y="25" width="24" height="45" rx="12" fill="#FCD34D" />
-              {/* Kernel detail patterns */}
               <circle cx="44" cy="32" r="1.5" fill="#F59E0B" />
               <circle cx="50" cy="32" r="1.5" fill="#F59E0B" />
               <circle cx="56" cy="32" r="1.5" fill="#F59E0B" />
@@ -548,27 +694,22 @@ const Dashboard = () => {
               <circle cx="50" cy="56" r="1.5" fill="#F59E0B" />
               <circle cx="56" cy="56" r="1.5" fill="#F59E0B" />
 
-              {/* Husks */}
               <path d="M35 70C30 50 35 35 44 28C38 38 34 54 38 70H35Z" fill="#10B981" />
               <path d="M65 70C70 50 65 35 56 28C62 38 66 54 62 70H65Z" fill="#10B981" />
               <path d="M50 72C40 65 32 50 35 35C45 45 48 60 50 72Z" fill="#047857" opacity="0.8" />
               <path d="M50 72C60 65 68 50 65 35C55 45 52 60 50 72Z" fill="#047857" opacity="0.8" />
 
-              {/* Large Eyes */}
               <circle cx="45" cy="40" r="3.5" fill="white" />
               <circle cx="45" cy="40" r="1.5" fill="black" />
               <circle cx="55" cy="40" r="3.5" fill="white" />
               <circle cx="55" cy="40" r="1.5" fill="black" />
 
-              {/* Big Smile */}
               <path d="M43 47C43 51 57 51 57 47H43Z" fill="#BE123C" />
               <path d="M47 47C47 49 53 49 53 47H47Z" fill="white" />
 
-              {/* Hands raised up */}
               <path d="M34 50C25 45 22 38 24 35C26 32 30 40 36 46" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
               <path d="M66 50C75 45 78 38 76 35C74 32 70 40 64 46" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
 
-              {/* Legs */}
               <line x1="45" y1="70" x2="45" y2="82" stroke="#047857" strokeWidth="3" />
               <line x1="55" y1="70" x2="55" y2="82" stroke="#047857" strokeWidth="3" />
             </svg>
@@ -591,15 +732,187 @@ const Dashboard = () => {
           </div>
 
           <div className="flex items-center gap-4 w-full lg:w-auto">
-            <button className="flex-1 lg:flex-none px-6 py-2.5 rounded-xl bg-[#84CC16] hover:bg-[#a3e635] text-[#0E1611] font-bold text-xs transition-colors cursor-pointer whitespace-nowrap active:scale-[0.98]">
-              Update Schedule
+            <button
+              onClick={() => openEmailModal('monthly')}
+              className="flex-1 lg:flex-none px-6 py-2.5 rounded-xl bg-[#84CC16] hover:bg-[#a3e635] text-[#0E1611] font-bold text-xs transition-colors cursor-pointer whitespace-nowrap active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Export Monthly Report</span>
             </button>
-            <button className="flex-1 lg:flex-none px-6 py-2.5 rounded-xl border border-slate-500 hover:border-slate-300 text-slate-300 hover:text-white font-bold text-xs transition-all cursor-pointer whitespace-nowrap active:scale-[0.98]">
-              Next Analyze
+            <button
+              onClick={() => handleDownloadReport('weekly')}
+              className="flex-1 lg:flex-none px-6 py-2.5 rounded-xl border border-slate-500 hover:border-slate-300 text-slate-300 hover:text-white font-bold text-xs transition-all cursor-pointer whitespace-nowrap active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download PDF</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* ========================================================= */}
+      {/* EMAIL & PDF REPORT MODAL DIALOG */}
+      {/* ========================================================= */}
+      {emailModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-lg glass-panel rounded-3xl p-6 sm:p-8 border border-emerald-500/30 shadow-2xl overflow-hidden">
+            {/* Ambient Background Glow */}
+            <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            {/* Header */}
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                  <FileText className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-white">Diagnostic Report Dispatcher</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Export PDF or email diagnostic report</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEmailModalOpen(false)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Period Selection */}
+            <div className="mb-6">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                Select Report Scope
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPeriod('weekly')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    selectedPeriod === 'weekly'
+                      ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase">Weekly Report</span>
+                    <Activity className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <span className="text-[11px] text-slate-300 mt-1">Past 7 Days ({stats.weeklyTotal} scans)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedPeriod('monthly')}
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    selectedPeriod === 'monthly'
+                      ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase">Monthly Report</span>
+                    <CalendarDays className="w-4 h-4 text-[#84CC16]" />
+                  </div>
+                  <span className="text-[11px] text-slate-300 mt-1">Past 30 Days ({stats.monthlyTotal} scans)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Email Form */}
+            <form onSubmit={handleSendEmailReport}>
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Recipient Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <Mail className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={recipientEmail}
+                    onChange={(e) => setRecipientEmail(e.target.value)}
+                    placeholder="farmer@example.com"
+                    className="w-full pl-10 pr-4 py-3 bg-black/40 border border-white/10 rounded-2xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5">
+                  The generated report will be securely dispatched as a high-resolution PDF attachment.
+                </p>
+              </div>
+
+              {/* Feedback Alert */}
+              {reportFeedback && (
+                <div
+                  className={`p-4 rounded-2xl mb-6 text-xs border ${
+                    reportFeedback.type === 'success'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    {reportFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-semibold leading-relaxed">{reportFeedback.message}</p>
+                      {reportFeedback.previewUrl && (
+                        <a
+                          href={reportFeedback.previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 mt-2 text-emerald-400 hover:text-emerald-300 underline font-bold"
+                        >
+                          <span>Open Development Email Preview</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadReport(selectedPeriod)}
+                  disabled={downloadingPeriod !== null}
+                  className="flex-1 py-3 px-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {downloadingPeriod ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                  ) : (
+                    <Download className="w-4 h-4 text-slate-300" />
+                  )}
+                  <span>Download PDF Directly</span>
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={sendingEmail || !recipientEmail}
+                  className="flex-1 py-3 px-4 rounded-2xl bg-[#84CC16] hover:bg-[#a3e635] text-[#0E1611] font-extrabold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] disabled:opacity-50"
+                >
+                  {sendingEmail ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Dispatching Email...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Email Report to Me</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
