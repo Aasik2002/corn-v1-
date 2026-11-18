@@ -85,6 +85,11 @@ export const scanService = {
     const response = await api.get('/scan/history');
     return response.data;
   },
+
+  getStats: async () => {
+    const response = await api.get('/scan/stats');
+    return response.data;
+  },
 };
 
 export default api;
